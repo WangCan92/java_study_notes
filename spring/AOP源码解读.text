@@ -1,0 +1,102 @@
+1.@EnableAspectJAutoProxy
+	使用@Import(AspectJAutoProxyRegistrar.class)给容器中倒入AspectJAutoProxyRegistrar
+		利用AspectJAutoProxyRegistrar给容器中注入bean
+			internalAutoProxyCreator=AnnotationAwareAspectJAutoProxyCreator
+	给容器中注入一个AnnotationAwareAspectJAutoProxyCreator类
+2.AnnotationAwareAspectJAutoProxyCreator
+	->AspectJAwareAdvisorAutoProxyCreator
+		->AbstractAdvisorAutoProxyCreator
+			->AbstractAutoProxyCreator
+				implements SmartInstantiationAwareBeanPostProcessor, BeanFactoryAware
+				关注后置处理器完成的工作（bean初始化前后）
+				AbstractAutoProxyCreator#setBeanFactory
+				AbstractAutoProxyCreator#有后置处理器逻辑
+		AbstractAdvisorAutoProxyCreator#setBeanFactory重写了父类方法
+		AbstractAdvisorAutoProxyCreator#initBeanFactory被setBeanFactory调用
+AnnotationAwareAspectJAutoProxyCreator#initBeanFactory重写父类initBeanFactory方法
+
+
+流程：
+ 1).创建IOC容器，传入主配置类
+ 2).注册配置类，调用refresh方法，刷新容器
+ 3).refresh方法调用registerBeanPostProcessors(beanFactory)注册bean的后置处理器，方便拦截bean的创建
+ 	PostProcessorRegistrationDelegate#registerBeanPostProcessors
+ 	1).获取IOC容器中所有已定义了的需要创建对象的BeanPostProcessor
+ 	2).额外添加其他后置处理器
+ 	3).优先注册实现了PriorityOrdered的BeanPostProcessor
+ 	4).注册实现了Ordered的BeanPostProcessor
+ 	5).注册没实现优先级接口的BeanPostPorcessor
+ 	6).注册BeanPostProcessor既创建BeanPostProcessor实例，放入到容器中
+ 		创建名字为internalAutoProxyCreator的BeanPostProcessor【AnnotationAwareAspectJAutoProxyCreator】
+ 		org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory#doCreateBean
+ 		1).创建bean的实例
+ 		2).设置bean的属性populateBean(beanName, mbd, instanceWrapper)
+ 		3).初始化bean，initializeBean(beanName, exposedObject, mbd)
+ 			org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory#initializeBean
+ 			1).invokeAwareMethods:处理Aware接口的方法回调（aop时就调用了setBeanFactory方法）
+ 			2).applyBeanPostProcessorsBeforeInitialization:应用后置处理器的postProcessBeforeInitialization方法
+ 			3).invokeInitMethods:执行初始化方法
+ 			4).applyBeanPostProcessorsAfterInitialization:应用后置处理器的postProcessAfterInitialization方法
+ 		4)BeanPostProcessor（AnnotationAwareAspectJAutoProxyCreator）创建成功，并调用了setBeanFactory方法
+ 	7).beanPostProcessor注册到容器中beanFactory.addBeanPostProcessor把
+ =============以上为创建AnnotationAwareAspectJAutoProxyCreator的过程==================
+ AnnotationAwareAspectJAutoProxyCreator=>SmartInstantiationAwareBeanPostProcessor
+ 4)完成beanfactory的初始化，既创建剩下的单实例bean：refresh调用finishBeanFactoryInitialization(beanFactory)
+ 	1).遍历容器中所有的bean，依次创建对象
+ 		getbean调用doGetBean调用getSingleton
+ 	2).创建bean
+ 		BeanPostProcessor是在Bean对象创建完成初始化前后调用
+ 		InstantiationAwareBeanPostProcessor是创建bean对象之前先尝试后置处理器返回对象
+ 		1).从缓存中获取当前bean，如果能获取到说明bean已被创建则直接使用
+ 		2).再创建，并缓存,createBean
+ 			1).resolveBeforeInstantiation(beanName, mbdToUse)解析BeforeInstantiation，希望后置处理器能返回一个代理对象，如果能返回一个代理对象就返回代理对象，如果不能就继续
+ 				org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory#resolveBeforeInstantiation
+ 				1).后置处理器先尝试返回对象，applyBeanPostProcessorsBeforeInstantiation，拿到所有的后置处理器，执行类型为InstantiationAwareBeanPostProcessor的后置处理器的postProcessBeforeInstantiation方法返回对象
+ 			2).doCreateBean(beanName, mbdToUse, args)真正的去创建一个bean实例和3.6流程一样
+
+
+AnnotationAwareAspectJAutoProxyCreator【instantiationAwareBeanPostProcessor】的作用：
+1).在bean创建之前调用postProcessBeforeInstantiation方法
+	1).判断当前bean是否在advisedBeans中（保存了所有需要增强bean）
+	2).判断当前bean是否是基础类型Advice、Pointcut、Advisor、AopInfrastructureBean及切面Aspect
+	3).是否需要跳过
+		1).获取候选的增强器（切面中的通知方法）List<Advisor> candidateAdvisors,每一个增强器的类型为InstantiationModelAwarePointcutAdvisor如果是则返回true
+		2).判断每一个增强器是不是AspectJPointcutAdvisor类型且当前类是否就是该增强器如果是则返回true
+		3).返回false
+2).创建对象bean doCreateBean
+ postProcessAfterInitialization执行wrapIfNecessary(bean, beanName, cacheKey)：包装
+	1).获取当前bean的所有增强方法specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, null);
+	 	1).获取当前bean的候选增强器即找到需要切入当前bean的方法
+	 	2).找到当前bean能用的增强器
+	 	3).给增强器排序
+	2).保存当前bean在advisedBeans中
+	3).如果需要增强，创建代理对象
+		1).获取所有增强器（通知方法）
+		2).通知方法保存到proxyFactory中
+		3).创建代理对象
+			JdkDynamicAopProxy(config)	jdk动态代理
+			ObjenesisCglibAopProxy(config)	cglib动态代理
+		4).给容器中返回增强了的代理对象
+		5).以后容器中获取到的就是这个组建的代理对象，执行目标方法时，代理对象就会执行通知方法流程
+
+3).目标方法的执行：
+	容器中保存了组件的代理对象（增强后对象）这个对象保存了详细信息（比如增强器，目标对象，，，）
+	1).拦截目标方法的执行CglibAopProxy.DynamicAdvisedInterceptor#intercept
+	2).根据ProxyFactory获取目标方法的拦截器链
+	 List<Object> chain = this.advised.getInterceptorsAndDynamicInterceptionAdvice(method, targetClass)
+	 	1).List<Object> interceptorList 保存所有拦截器
+	 	2).遍历所有增强器，将其转为interceptors  registry.getInterceptors(advisor)
+
+	3).如果没有拦截器链，直接执行目标方法
+		拦截器链（每一个通知方法包装为拦截器，利用MethodInterceptor机制）
+	4).如果有拦截器链 new CglibMethodInvocation(proxy, target, method, args, targetClass, chain, methodProxy).proceed()
+	5).拦截器链的触发过程
+		1.如果没有拦截器或者拦截器的索引和拦截器数组-1大小一样（制定到了最后一个拦截器）执行目标方法
+		2.链式获取每一个拦截器，拦截器执行invoke方法，每一个拦截器等待下一个拦截器执行完成返回以后再来执行，拦截器链机制保证通知方法与目标方法的执行顺序
+
+
+
+
+
+
+
