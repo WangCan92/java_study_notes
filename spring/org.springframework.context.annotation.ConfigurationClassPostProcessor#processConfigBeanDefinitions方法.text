@@ -1,0 +1,37 @@
+org.springframework.context.annotation.ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry
+	调用org.springframework.context.annotation.ConfigurationClassPostProcessor#processConfigBeanDefinitions
+		1.创建Configuration解析器
+		2.调用org.springframework.context.annotation.ConfigurationClassParser#parse(java.util.Set<org.springframework.beans.factory.config.BeanDefinitionHolder>)
+			调用org.springframework.context.annotation.ConfigurationClassParser#parse(org.springframework.core.type.AnnotationMetadata, java.lang.String)
+				调用org.springframework.context.annotation.ConfigurationClassParser#processConfigurationClass
+					1.调用org.springframework.context.annotation.ConfigurationClassParser#doProcessConfigurationClass
+						 1.如果被@Component注解
+						 	调用org.springframework.context.annotation.ConfigurationClassParser#processMemberClasses
+						 		调用org.springframework.context.annotation.ConfigurationClassParser#processConfigurationClass
+						 2.获取到所有的@PropertySource注解，处理该注解
+						 3.获取所有的@ComponentScans注解，获取扫描到注解路径下类的BeanDefinition放到BeanDefinitionMap中并返回所有的BeanDefinitionHolder
+						 	遍历每个注解调用org.springframework.context.annotation.ComponentScanAnnotationParser#parse
+						 	 1.创建一个类路径的scanner，ClassPathBeanDefinitionScanner scanner = new ClassPathBeanDefinitionScanner(this.registry,componentScan.getBoolean("useDefaultFilters"), this.environment, this.resourceLoader);
+							 2.scanner中添加includeFilters和excludeFilters的过滤规则
+							 3.scanner根据过滤规则找到路径下的类的BeanDefinition放到BeanDefinitionMap中并返回所有的BeanDefinitionHolder
+						 4.遍历所有的BeanDefinitionHolder，调用org.springframework.context.annotation.ConfigurationClassParser#parse(java.lang.String, java.lang.String)
+						 	调用org.springframework.context.annotation.ConfigurationClassParser#processConfigurationClass
+						 5.处理@Import注解：org.springframework.context.annotation.ConfigurationClassParser#processImports
+						 	1.如果导入的类是否为ImportSelector类型则：
+						 		1.如果这个类实现了Aware类型的接口，那么
+						 		1.导入的类是否时延迟加载DeferredImportSelector类型，如果是，那么在org.springframework.context.annotation.ConfigurationClassParser.DeferredImportSelectorHandler#deferredImportSelectors list中添加。
+						 		2.调用ImportSelector实现类的selectImports方法返回所有导入的类的名字。
+						 		3.调用org.springframework.context.annotation.ConfigurationClassParser#
+						 	2.如果导入的类为ImportBeanDefinitionRegistrar类型：
+						 		1.实例话这个类
+						 		2.执行ImportBeanDefinitionRegistrar中的实现方法，把自定义的BeanDefination加载到bdm中并org.springframework.context.annotation.ConfigurationClass#importBeanDefinitionRegistrars的Map<ImportBeanDefinitionRegistrar, AnnotationMetadata>中添加
+						 	3.如果导入的类为普通类型
+						 	 调用org.springframework.context.annotation.ConfigurationClassParser#
+						 6.处理@ImportResource注解
+						 	org.springframework.context.annotation.ConfigurationClass#importedResources的Map<ImportBeanDefinitionRegistrar, AnnotationMetadata>中添加
+						 7.处理@Bean注释的方法
+						 	把所有注释了@Bean的方法放入org.springframework.context.annotation.ConfigurationClass#beanMethods 的Set<BeanMethod>中
+					2.把当前类放入到org.springframework.context.annotation.ConfigurationClassParser#configurationClasses的Map<ConfigurationClass, ConfigurationClass>中
+		3.从解析器中取出所有引入的普通类org.springframework.context.annotation.ConfigurationClassParser#configurationClasses
+		4.将取出的普通类添加到bdm中
+
