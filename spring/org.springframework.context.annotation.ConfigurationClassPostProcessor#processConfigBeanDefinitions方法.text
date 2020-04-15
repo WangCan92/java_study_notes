@@ -2,7 +2,7 @@ org.springframework.context.annotation.ConfigurationClassPostProcessor#postProce
 	调用org.springframework.context.annotation.ConfigurationClassPostProcessor#processConfigBeanDefinitions
 		1.创建Configuration解析器
 		2.调用org.springframework.context.annotation.ConfigurationClassParser#parse(java.util.Set<org.springframework.beans.factory.config.BeanDefinitionHolder>)
-			调用org.springframework.context.annotation.ConfigurationClassParser#parse(org.springframework.core.type.AnnotationMetadata, java.lang.String)
+			1.调用org.springframework.context.annotation.ConfigurationClassParser#parse(org.springframework.core.type.AnnotationMetadata, java.lang.String)
 				调用org.springframework.context.annotation.ConfigurationClassParser#processConfigurationClass
 					1.调用org.springframework.context.annotation.ConfigurationClassParser#doProcessConfigurationClass
 						 1.如果被@Component注解
@@ -19,19 +19,57 @@ org.springframework.context.annotation.ConfigurationClassPostProcessor#postProce
 						 5.处理@Import注解：org.springframework.context.annotation.ConfigurationClassParser#processImports
 						 	1.如果导入的类是否为ImportSelector类型则：
 						 		1.如果这个类实现了Aware类型的接口，那么
-						 		1.导入的类是否时延迟加载DeferredImportSelector类型，如果是，那么在org.springframework.context.annotation.ConfigurationClassParser.DeferredImportSelectorHandler#deferredImportSelectors list中添加。
-						 		2.调用ImportSelector实现类的selectImports方法返回所有导入的类的名字。
-						 		3.调用org.springframework.context.annotation.ConfigurationClassParser#
+						 		2.导入的类是否时延迟加载DeferredImportSelector类型，如果是，那么在org.springframework.context.annotation.ConfigurationClassParser.DeferredImportSelectorHandler#deferredImportSelectors list中添加。
+						 		3.调用ImportSelector实现类的selectImports方法返回所有导入的类的名字。
+						 		4.调用org.springframework.context.annotation.ConfigurationClassParser#
 						 	2.如果导入的类为ImportBeanDefinitionRegistrar类型：
 						 		1.实例话这个类
-						 		2.执行ImportBeanDefinitionRegistrar中的实现方法，把自定义的BeanDefination加载到bdm中并org.springframework.context.annotation.ConfigurationClass#importBeanDefinitionRegistrars的Map<ImportBeanDefinitionRegistrar, AnnotationMetadata>中添加
+						 		2.执行这个类的aware方法
+						 		3.执行ImportBeanDefinitionRegistrar中的实现方法，把自定义的BeanDefination加载到bdm中并org.springframework.context.annotation.ConfigurationClass#importBeanDefinitionRegistrars的Map<ImportBeanDefinitionRegistrar, AnnotationMetadata>中添加
 						 	3.如果导入的类为普通类型
-						 	 调用org.springframework.context.annotation.ConfigurationClassParser#
+						 	 调用org.springframework.context.annotation.ConfigurationClassParser#processConfigurationClass
 						 6.处理@ImportResource注解
 						 	org.springframework.context.annotation.ConfigurationClass#importedResources的Map<ImportBeanDefinitionRegistrar, AnnotationMetadata>中添加
 						 7.处理@Bean注释的方法
 						 	把所有注释了@Bean的方法放入org.springframework.context.annotation.ConfigurationClass#beanMethods 的Set<BeanMethod>中
 					2.把当前类放入到org.springframework.context.annotation.ConfigurationClassParser#configurationClasses的Map<ConfigurationClass, ConfigurationClass>中
+			2.处理延迟加载DeferredImportSelector类型
 		3.从解析器中取出所有引入的普通类org.springframework.context.annotation.ConfigurationClassParser#configurationClasses
-		4.将取出的普通类添加到bdm中
+		4.新建一个reader，new ConfigurationClassBeanDefinitionReader
+		5.reader将所有类的beanDefination添加到bdm中org.springframework.context.annotation.ConfigurationClassBeanDefinitionReader#loadBeanDefinitions
+			1.把@Improt注解引入的bd放到bdm中，org.springframework.context.annotation.ConfigurationClassBeanDefinitionReader#registerBeanDefinitionForImportedConfigurationClass
+			2.@Bean注解的方法的bd放入到bdm中，org.springframework.context.annotation.ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForBeanMethod
+			3.@ImportResource产生的bd放入到bdm中，org.springframework.context.annotation.ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsFromImportedResources
+			4.4.@Import注解引入类的类型为ImportBeanDefinitionRegistrar的类，org.springframework.context.annotation.ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsFromRegistrars
+
+
+
+
+
+org.springframework.context.annotation.ConfigurationClassPostProcessor#postProcessBeanFactory
+	1.调用org.springframework.context.annotation.ConfigurationClassPostProcessor#enhanceConfigurationClasses
+		调用org.springframework.context.annotation.ConfigurationClassEnhancer#enhance
+		//对@Configuration注解的类代理增强
+		1.判断当前类是否已经代理如果已经代理返回当前类即可。
+		2.当前类未被代理则创建代理类
+			调用org.springframework.context.annotation.ConfigurationClassEnhancer#createClass
+				设置两个Callbacks
+				org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor
+					BeanMethodInterceptor的作用：
+						调用目标类的方法时会调用到代理类的org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor#intercept方法
+							1.如果如果容器中已经包含当前factorybean，创建factorybean的代理。调用org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor#enhanceFactoryBean
+								1.如果是factorybean静态类或者该类的getObject方法为静态方法
+									1.如果@Configuration注释的类的方法返回类型为接口类型那么创建JDK动态代理org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor#createInterfaceProxyForFactoryBean，并返回代理类
+										代理getObject方法直接从beanFactory中获取bean。
+									2.如果该类非接口类型则直接返回factorybean
+								2.返回ciglib代理类型org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor#createCglibProxyForFactoryBean
+									代理factorybean的getObject方法，直接从beanFactroy中取bean。
+							2.如果当前方法第一次被调用，直接调用@Configuration注解的类的方法返回实例化对象。
+							3.如果当前方法非第一次调用，调用org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor#resolveBeanReference
+								从beanFactory中获取对象，并返回。
+
+
+				org.springframework.context.annotation.ConfigurationClassEnhancer.BeanFactoryAwareMethodInterceptor
+					给代理类添加beanfactoryaware接口实现，添加一个beanfactory的属性。
+	2.添加一个org.springframework.context.annotation.ConfigurationClassPostProcessor.ImportAwareBeanPostProcessor 到容器中
 
