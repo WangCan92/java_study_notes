@@ -1,0 +1,32 @@
+执行zkCli.sh 命令
+	调用org.apache.zookeeper.ZooKeeperMain#main
+		1.ZooKeeperMain main = new ZooKeeperMain(args);
+			 cl.parseOptions(args);解析命令
+			 connectToZK(cl.getOption("server"));链接zk服务器
+			 	zk = new ZooKeeper(host,Integer.parseInt(cl.getOption("timeout")),new MyWatcher(), readOnly);
+			 		cnxn = new ClientCnxn(connectStringParser.getChrootPath(),hostProvider, sessionTimeout, this, watchManager,getClientCnxnSocket(), canBeReadOnly);其中的getClientCnxnSocket()方法默认创建了个一个org.apache.zookeeper.ClientCnxnSocketNIO的ClientCnxnSocket
+			 			设置两个线程属性分别为
+			 			sendThread = new SendThread(clientCnxnSocket);
+			 				state = States.CONNECTING;设置状态
+            				this.clientCnxnSocket = clientCnxnSocket;
+           	 				setDaemon(true);设置守护线程
+        				eventThread = new EventThread();
+        			cnxn.start();
+        				sendThread.start();
+        					线程调用org.apache.zookeeper.ClientCnxn.SendThread#run
+        						while(state.isAlive())链接未关闭且权限认证通过
+        							如果未链接则startConnect(serverAddress);链接socket
+        							如果已经链接认证权限
+        							clientCnxnSocket.doTransport(to, pendingQueue, outgoingQueue, ClientCnxn.this);org.apache.zookeeper.ClientCnxnSocket#doTransport
+        								遍历所有的select
+        									如果是SelectionKey.OP_CONNECT类型
+        										判断是否链接成功如果未成功，org.apache.zookeeper.ClientCnxn.SendThread#primeConnection
+        									如果是SelectionKey.OP_READ | SelectionKey.OP_WRITE类型
+        										org.apache.zookeeper.ClientCnxnSocketNIO#doIO
+
+
+
+
+        				eventThread.start();
+		2.main.run();
+			读取命令执行命令

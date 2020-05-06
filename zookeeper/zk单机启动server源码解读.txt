@@ -1,0 +1,62 @@
+org.apache.zookeeper.server.quorum.QuorumPeerMain#main 启动zkServer
+	org.apache.zookeeper.server.quorum.QuorumPeerMain#initializeAndRun
+		加载zoo.cfg配置文件
+		判断位置文件中是否配置多个server
+		如果多个server则org.apache.zookeeper.server.quorum.QuorumPeerMain#runFromConfig启动集群模式
+		如果无server则org.apache.zookeeper.server.ZooKeeperServerMain#main启动单机模式
+			org.apache.zookeeper.server.ZooKeeperServerMain#initializeAndRun
+				org.apache.zookeeper.server.ZooKeeperServerMain#runFromConfig
+					创建org.apache.zookeeper.server.ZooKeeperServer
+					设置ZooKeeperServer的属性txnLogFactory该属性是事务日志和快照的加载工具类
+					org.apache.zookeeper.server.ServerCnxnFactory#createFactory()创建socket工厂，复值给org.apache.zookeeper.server.ZooKeeperServerMain#cnxnFactory默认为org.apache.zookeeper.server.NIOServerCnxnFactory其实现runable接口
+					org.apache.zookeeper.server.NIOServerCnxnFactory#configure加载配置，
+					org.apache.zookeeper.server.ServerCnxnFactory#startup
+						org.apache.zookeeper.server.NIOServerCnxnFactory#start
+							org.apache.zookeeper.server.NIOServerCnxnFactory#run
+								如果是建立连接的请求则建立连接
+								如果是读写请求时org.apache.zookeeper.server.NIOServerCnxn#doIO
+									如果是读数据org.apache.zookeeper.server.NIOServerCnxn#readPayload
+										org.apache.zookeeper.server.NIOServerCnxn#readRequest
+											org.apache.zookeeper.server.ZooKeeperServer#processPacket
+												org.apache.zookeeper.server.ZooKeeperServer#submitRequest(org.apache.zookeeper.server.Request)
+													firstProcessor.processRequest(si);
+														将request放入到org.apache.zookeeper.server.PrepRequestProcessor#submittedRequests队列中
+														org.apache.zookeeper.server.PrepRequestProcessor#run方法处理队列中的请求
+															while(true)
+																从submittedRequests队列中取出request，
+																调用org.apache.zookeeper.server.PrepRequestProcessor#pRequest方法
+																	根据request的不同操作类型调用不同接口，此处以create为例
+																		创建CreateRequest请求
+																		调用org.apache.zookeeper.server.PrepRequestProcessor#pRequest2Txn
+																			Acl验证
+																			计算父节点和当前节点要修改的记录
+																			org.apache.zookeeper.server.PrepRequestProcessor#addChangeRecord
+																				把修改记录添加到org.apache.zookeeper.server.ZooKeeperServer#outstandingChanges与org.apache.zookeeper.server.ZooKeeperServer#outstandingChangesForPath中
+																nextProcessor.processRequest(request);调用下一个处理器即org.apache.zookeeper.server.SyncRequestProcessor
+																	org.apache.zookeeper.server.SyncRequestProcessor#processRequest
+																		把request放到org.apache.zookeeper.server.SyncRequestProcessor#queuedRequests集合中
+
+																	org.apache.zookeeper.server.SyncRequestProcessor#run
+																	while(true)
+																		从queuedRequests集合中取得request，存储日志和快照
+																		nextProcessor.processRequest(si)
+																			org.apache.zookeeper.server.FinalRequestProcessor#processRequest
+																				org.apache.zookeeper.server.ZooKeeperServer#processTxn
+																					org.apache.zookeeper.server.DataTree#processTxn
+																						将修改记录修改到内存中
+																				org.apache.zookeeper.server.ServerCnxn#sendResponse返回结果
+
+
+
+
+
+
+						org.apache.zookeeper.server.ServerCnxnFactory#setZooKeeperServer
+						org.apache.zookeeper.server.ZooKeeperServer#startdata
+							加载快照文件
+						org.apache.zookeeper.server.ZooKeeperServer#startup
+							org.apache.zookeeper.server.ZooKeeperServer#startSessionTracker创建session跟踪器到期session close
+							org.apache.zookeeper.server.ZooKeeperServer#setupRequestProcessors设置请求处理器，org.apache.zookeeper.server.ZooKeeperServer#firstProcessor赋值org.apache.zookeeper.server.PrepRequestProcessor->org.apache.zookeeper.server.SyncRequestProcessor->org.apache.zookeeper.server.FinalRequestProcessor
+
+
+
